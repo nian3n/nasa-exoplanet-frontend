@@ -1,12 +1,8 @@
 import streamlit as st
-
-# ---- Page color map (your palette) ----
-
-    # ---- New color palette ----
 PAGE_COLORS = {
     "forest":    "#284139",  # deep green
     "sage":      "#809076",  # muted green
-    "sand":      "#F8D794",  # light accent (used as 'mist' panel)
+    "sand":      "#F8D794",  # light accent 
     "ochre":     "#886830",  # warm brown
     "deep_teal": "#22393C",  # dark teal
 }
