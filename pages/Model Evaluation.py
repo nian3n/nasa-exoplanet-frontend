@@ -1,9 +1,9 @@
 import streamlit as st
 from theme import apply_theme, header
 
-st.set_page_config(page_title="Model Evaluation", page_icon="📈", layout="wide")
+st.set_page_config(page_title="ExoHorizon • Model Evaluation", page_icon="📈", layout="wide")
 
-apply_theme(page_key="forest", nebula_path="assets/Nebula.png")
+apply_theme(page_key="forest", nebula_path="assets/nebula.jpg")
 
 header("📈 Model Evaluation", "Upload evaluation datasets and compare results")
 

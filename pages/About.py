@@ -1,13 +1,12 @@
-
 import streamlit as st
 from theme import apply_theme, header
 
-st.set_page_config(page_title="ExoLab • About", page_icon="🛰️", layout="wide")
+st.set_page_config(page_title="ExoHorizon • About", page_icon="🛰️", layout="wide")
 
 # Use a distinct page color from your palette (e.g., "royal")
-apply_theme(page_key="sand", nebula_path="assets/Nebula.png")
+apply_theme(page_key="sand", nebula_path="assets/nebula.jpg")
 
-header("🛰️ About ExoHorizon", "Team & Project Overview")
+header("About ExoHorizon", "Team & Project Overview")
 
 DARK_BROWN = "#4A2F14"
 WHITE = "#FFFFFF"
@@ -46,7 +45,7 @@ st.markdown(
     <div class="glass">
       <h3>What is ExoHorizon?</h3>
       <p>
-        ExoLab is our project for NASA SpaceApps 2025 challenge: an end-to-end workflow to ingest exoplanet survey data, 
+        ExoHorizon is our project for NASA SpaceApps 2025 challenge: an end-to-end workflow to ingest exoplanet datasets, 
         engineer features, and train/evaluate ML models that classify candidates. 
         It’s designed for both researchers who want a quick, reproducible baseline and 
         novices who want an approachable interface to explore light curves and catalog features.
@@ -60,9 +59,9 @@ st.markdown(
 st.markdown(
     """
     <div class="glass">
-      <h3>Roadmap</h3>
+      <h3>Project Demo</h3>
       <ul>
-        <li>Project Demo</li>
+        <li>Link to Project Demo</li>
       </ul>
     </div>
     """,

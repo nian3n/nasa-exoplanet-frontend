@@ -23,7 +23,7 @@ def mix_rgba(hex_color: str, alpha: float = 0.6, bias: float = 0.0) -> str:
         b = max(0, min(255, int(b * (1 + bias))))
     return f"rgba({r},{g},{b},{alpha})"
 
-def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png"):
+def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png", uploader_caption_hex: str = "#111111"):
     base_hex = PAGE_COLORS.get(page_key, PAGE_COLORS["forest"])
 
     # Tuned opacities
@@ -31,16 +31,40 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png"):
     mist_rgba    = mix_rgba(MIST_HEX,  alpha=0.85, bias=0.00)  
     sidebar_rgba = mix_rgba(base_hex, alpha=0.85, bias=-0.15)
 
-    # A subtle starfield + gradient overlay to avoid monotone look
     gradient_overlay = (
         "radial-gradient(1200px 600px at 10% 20%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%),"
         "radial-gradient(900px 500px at 80% 30%, rgba(255,255,255,0.05), rgba(0,0,0,0) 55%),"
         "linear-gradient(180deg, rgba(0,0,30,0.45) 0%, rgba(0,0,0,0.75) 100%)"
     )
+    uploader_bg    = lighten_with_white(base_hex, mix=0.14, alpha=0.88)  # slightly lighter than bg
+    uploader_border= lighten_with_white(base_hex, mix=0.32, alpha=0.95)  # a bit brighter for edge
+
 
     st.markdown(f"""
     <style>
-      /* Base app background (solid color, acts as a fallback under the hero) */
+        :root {{
+            --exo-uploader-caption: {uploader_caption_hex};
+        }}
+
+        /* File uploader: white box + per-page caption color */
+        .stFileUploader > div:first-child {{
+            background: #ffffff !important;
+            border: 1px solid rgba(0,0,0,0.15) !important;
+            border-radius: 0 !important;
+            padding: 12px;
+            text-align: center;
+        box-shadow: none !important;
+  }}
+
+  /* Only uploader text uses the per-page color */
+  .stFileUploader label,
+  .stFileUploader span,
+  .stFileUploader p,
+  .stFileUploader [data-testid="stFileUploadDropzone"] * {{
+      color: var(--exo-uploader-caption) !important;
+      text-shadow: none !important;
+  }}
+        /* Page background */
       .stApp {{
         background: {base_hex} !important;
       }}
@@ -70,39 +94,13 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png"):
         border-right: 1px solid rgba(0,0,0,0.35);
       }}
 
-      /* File uploader Block */
-        .stFileUploader > div:first-child {{
-            background: {mist_rgba} !important;
-            border-radius: 14px !important;
-            border: 1px solid rgba(255,255,255,0.25) !important;
-            padding: 12px;
-            text-align: center;
-        }}
-
-        .stFileUploader label {{
-            color: #fff !important;
-            font-size: clamp(14px, 2vw, 20px);
-            font-weight: 600;
-            text-align: center;
-            text-shadow: 0 0 6px rgba(0,0,0,0.45);
-        }}
-
-        .stFileUploader span,
-        .stFileUploader p {{
-            color: #c2dde4 !important;              /* mist-tone text */
-            font-size: clamp(14px, 2vw, 20px);   /* scale like subtitle */
-            font-weight: 500;
-            text-align: center;
-            text-shadow: 0 0 6px rgba(0,0,0,0.45); /* glow for contrast */
-        }}
-
 
       /* HEADER */
       .exo-hero {{
         width: 100%;
         min-height: 36vh;
         max-height: 48vh;
-        border-radius: 18px;
+        border-radius: 0 !important;;
         overflow: hidden;
         position: relative;
         margin: 6px 0 20px 0;
@@ -141,7 +139,7 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png"):
         text-shadow: 0 0 14px rgba(0,0,0,0.65);
       }}
 
-      /* tiny planets (non-monotone spark) */
+      /* tiny planets */
       .exo-hero::before,
       .exo-hero::after {{
         content: "";
@@ -162,6 +160,17 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png"):
       }}
     </style>
     """, unsafe_allow_html=True)
+
+def lighten_with_white(hex_color: str, mix: float = 0.14, alpha: float = 0.85) -> str:
+    """
+    Lighten a hex color by mixing with white (0–1), return rgba().
+    mix=0.14 means 14% closer to white. alpha in [0,1].
+    """
+    r, g, b = _hex_to_rgb(hex_color.lstrip("#"))
+    r = round(r + (255 - r) * mix)
+    g = round(g + (255 - g) * mix)
+    b = round(b + (255 - b) * mix)
+    return f"rgba({r},{g},{b},{alpha})"
 
 def header(title: str, subtitle: str = ""):
     st.markdown(

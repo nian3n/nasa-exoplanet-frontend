@@ -1,9 +1,9 @@
 import streamlit as st
 from theme import apply_theme, header
 
-st.set_page_config(page_title="ExoLab • Model Training", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="ExoHorizon • Model Training", page_icon="🤖", layout="wide")
 
-apply_theme(page_key="ochre", nebula_path="assets/Nebula.png")
+apply_theme(page_key="ochre", nebula_path="assets/nebula.jpg")
 
 header("🤖 Model Training", "Upload training data and build models")
 
