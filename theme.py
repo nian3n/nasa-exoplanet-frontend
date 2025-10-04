@@ -2,9 +2,9 @@ import streamlit as st
 PAGE_COLORS = {
     "forest":    "#284139",  # deep green
     "sage":      "#809076",  # muted green
-    "sand":      "#F8D794",  # light accent 
+    "sand":      "#18066C",  # dark blue
     "ochre":     "#886830",  # warm brown
-    "deep_teal": "#22393C",  # dark teal
+    "deep_teal": "#110515",  # dark black
 }
 
 # Use the light 'sand' tone as the mist block color (for uploader, etc.)
