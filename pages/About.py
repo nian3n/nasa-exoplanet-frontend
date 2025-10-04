@@ -8,7 +8,7 @@ apply_theme(page_key="sand", nebula_path="assets/nebula.jpg")
 
 header("About ExoHorizon", "Team & Project Overview")
 
-DARK_BROWN = "#4A2F14"
+DARK_BROWN = "#DDE2EE"
 WHITE = "#FFFFFF"
 st.markdown(
     f"""
