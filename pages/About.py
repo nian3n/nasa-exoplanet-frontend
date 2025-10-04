@@ -8,7 +8,7 @@ apply_theme(page_key="sand", nebula_path="assets/nebula.jpg")
 
 header("About ExoHorizon", "Team & Project Overview")
 
-DARK_BROWN = "#DDE2EE"
+DARK_BROWN = "#DAE0EB"
 WHITE = "#FFFFFF"
 st.markdown(
     f"""
@@ -31,8 +31,8 @@ st.markdown(
         <li><b>Olivia Song</b></li>
         <li><b>Matias Freire</b></li>
         <li><b>Wisam Kakooz</b></li>
-        <li><b>F. Yalın Şen</b></li>
         <li><b>Farheen Rahman</b></li>
+        <li><b>F. Yalın Şen</b></li>
       </ul>
     </div>
     """,
