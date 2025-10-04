@@ -3,254 +3,278 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import sys
 
 from theme import apply_theme, header
 
+#Page setup
 st.set_page_config(page_title="ExoHorizon • Data Exploration", page_icon="📊", layout="wide")
-
 apply_theme(page_key="sage", nebula_path="assets/nebula.jpg")
+st.markdown("""
+<style>
+div[data-baseweb="popover"] { 
+  color: #000 !important; 
+  -webkit-text-fill-color: #000 !important; 
+}
+
+/* Options (normal) */
+div[data-baseweb="popover"] [role="listbox"] [role="option"],
+div[data-baseweb="popover"] [role="listbox"] [role="option"] *,
+div[data-baseweb="menu-item"],
+div[data-baseweb="menu-item"] * {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+/* Selected / highlighted states (keep text black) */
+div[role="listbox"] [aria-selected="true"],
+div[role="listbox"] [aria-selected="true"] *,
+div[role="listbox"] [data-highlighted="true"],
+div[role="listbox"] [data-highlighted="true"] * {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 header("📊 Data Exploration", "Visualize and analyze raw exoplanet datasets")
 
-uploaded = st.file_uploader("Upload your dataset (CSV)", type=["csv"], key="exploration_csv")
-
+#File Uploader 
+uploaded = st.file_uploader("Upload your raw dataset", type=["csv"], key="exploration_csv")
 st.markdown('<div class="glass"><h3>Exploration Dashboard</h3></div>', unsafe_allow_html=True)
+
+#Revelant KOI columns to keep for analysis
+KOI_KEEP_COLS = [
+    "koi_disposition", "koi_fpflag_nt", "koi_fpflag_ss", "koi_fpflag_co", "koi_fpflag_ec",
+    "koi_period", "koi_time0bk_err1", "koi_time0bk_err2", "koi_impact", "koi_duration",
+    "koi_depth", "koi_prad", "koi_teq", "koi_insol", "koi_model_snr", "koi_tce_plnt_num",
+    "koi_steff", "koi_slogg", "koi_srad", "koi_kepmag",
+    "koi_tce_delivname"  
+]
+
+#Must-exist KOI columns to identify a Kepler KOI dataset
+KOI_ANCHOR_COLS = {"koi_disposition", "koi_period", "koi_prad", "koi_tce_delivname"}
 
 @st.cache_data(show_spinner=False)
 def load_csv(file) -> pd.DataFrame:
-    return pd.read_csv(file)
+    import io
+    # Read the raw bytes (Streamlit uploader is a file-like object)
+    if hasattr(file, "seek"):
+        file.seek(0)
+    raw = file.read() if hasattr(file, "read") else open(file, "rb").read()
 
-def detect_datetime_columns(df: pd.DataFrame, min_ratio: float = 0.7):
-    date_cols = []
-    for c in df.columns:
-        # quick accept by name hint
-        cl = str(c).lower()
-        if any(h in cl for h in ["date", "time", "epoch", "disc", "jd", "mjd"]):
-            try:
-                s = pd.to_datetime(df[c], errors="coerce", utc=True)
-                if s.notna().mean() > 0.2:  # looser threshold if name hints match
-                    date_cols.append(c)
-                    continue
-            except Exception:
-                pass
-        
-        if df[c].dtype == "object":
-            try:
-                s = pd.to_datetime(df[c], errors="coerce", utc=True)
-                if s.notna().mean() >= min_ratio:
-                    date_cols.append(c)
-            except Exception:
-                pass
-    return date_cols
+    # Decode to text
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = str(raw)
 
-def detect_columns(df: pd.DataFrame):
-    numeric = df.select_dtypes(include=["number"]).columns.tolist()
-    dates   = detect_datetime_columns(df)
-    # categorical: text-like OR low-cardinality numeric
-    categorical = [c for c in df.columns if c not in numeric and c not in dates]
-    for c in numeric:
-        nunq = df[c].nunique(dropna=True)
-        if nunq <= min(30, max(8, len(df)//50)):
-            if c not in categorical:
-                categorical.append(c)
-    return numeric, categorical, dates
+    # Drop only the *leading* comment lines that start with '#'
+    lines = text.splitlines()
+    start = 0
+    while start < len(lines) and lines[start].lstrip().startswith("#"):
+        start += 1
 
-def suggested_numeric(numeric_cols):
-    hints = ["period", "prad", "radius", "mass", "teq", "temp", "sma", "insol", "ecc", "snr", "depth"]
-    for h in hints:
-        for c in numeric_cols:
-            if h in c.lower():
-                return c
-    return numeric_cols[0] if numeric_cols else None
+    cleaned = "\n".join(lines[start:])
+    return pd.read_csv(io.StringIO(cleaned))
 
-def suggested_xy(numeric_cols):
-    xhint, yhint = None, None
-    for c in numeric_cols:
-        lc = c.lower()
-        if xhint is None and any(k in lc for k in ["period", "per", "sma", "a"]):
-            xhint = c
-        if yhint is None and any(k in lc for k in ["prad", "radius", "mass", "teq", "temp", "depth", "snr"]):
-            yhint = c
-        if xhint and yhint and xhint != yhint:
-            break
- 
-    if not xhint and len(numeric_cols) >= 1: xhint = numeric_cols[0]
-    if not yhint and len(numeric_cols) >= 2: yhint = numeric_cols[1]
-    if xhint == yhint and len(numeric_cols) >= 2:
-        yhint = numeric_cols[1]
-    return xhint, yhint
 
-#after file is uploaded
-if uploaded:
-    df = load_csv(uploaded)
-    st.success(f"Loaded **{df.shape[0]:,} rows** × **{df.shape[1]} columns**")
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Lower-case all column names; create a mapping to access them uniformly."""
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    mapping = {c: c.lower() for c in df.columns}
+    df.rename(columns=mapping, inplace=True)
+    return df
 
-    
-    num_cols, cat_cols, date_cols = detect_columns(df)
+def is_kepler_koi(df: pd.DataFrame) -> bool:
+    cols = set(df.columns)
+    return KOI_ANCHOR_COLS.issubset(cols)
 
-    with st.expander("Detected columns", expanded=False):
-        st.write("**Numeric:**", num_cols or "—")
-        st.write("**Date/Time-like:**", date_cols or "—")
-        st.write("**Categorical (incl. low-cardinality numeric):**", cat_cols or "—")
+def subset_relevant_koi(df: pd.DataFrame) -> pd.DataFrame:
+    keep = [c for c in KOI_KEEP_COLS if c in df.columns]
+    return df[keep].copy()
 
-    with st.sidebar:
-        st.header("Chart Controls")
-        lib = st.radio("Library", ["Plotly (interactive)", "Matplotlib"], index=0)
+def drop_false_positives_and_nans(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # Drop NaN koi_tce_delivname
+    df = df[df["koi_tce_delivname"].notna()]
+    # Drop False Positives (case-insensitive, handle weird spacing)
+    if "koi_disposition" in df.columns:
+        df["koi_disposition"] = df["koi_disposition"].astype(str).str.strip()
+        df = df[~df["koi_disposition"].str.upper().eq("FALSE POSITIVE")]
+    return df
 
-        chart_type = st.selectbox(
-            "Chart type",
-            ["Line", "Scatter", "Histogram", "Box", "Bar (category counts)", "Correlation Heatmap"],
-            index=0
-        )
-
-        row_limit = st.slider("Max rows (for speed)", min_value=1000, max_value=200000, value=min(50000, len(df)), step=1000)
-        sample_df = df.head(row_limit)
-
-    
-        idx_opt = "(index)"
-        if chart_type == "Line":
-            y_default = suggested_numeric(num_cols)
-            y_col = st.selectbox("Y (numeric)", [y_default] + [c for c in num_cols if c != y_default] if y_default else num_cols)
-            x_choices = [idx_opt] + date_cols + cat_cols + num_cols
-            x_col = st.selectbox("X (optional)", x_choices, index=0)
-            group = st.selectbox("Color / Group (optional)", ["(none)"] + cat_cols)
-
-        elif chart_type == "Scatter":
-            x_default, y_default = suggested_xy(num_cols)
-            x_col = st.selectbox("X (numeric)", num_cols, index=max(num_cols.index(x_default) if x_default in num_cols else 0, 0)) if num_cols else None
-            y_col = st.selectbox("Y (numeric)", num_cols, index=max(num_cols.index(y_default) if y_default in num_cols else (1 if len(num_cols) > 1 else 0), 0)) if num_cols else None
-            group = st.selectbox("Color (optional)", ["(none)"] + cat_cols)
-
-        elif chart_type == "Histogram":
-            h_col = st.selectbox("Column (numeric)", num_cols)
-            bins = st.slider("Bins", 5, 100, 30)
-
-        elif chart_type == "Box":
-            val = st.selectbox("Value (numeric)", num_cols)
-            by  = st.selectbox("Group by (category)", cat_cols) if cat_cols else None
-            show_points = st.checkbox("Show all points (Plotly only)", value=True)
-
-        elif chart_type == "Bar (category counts)":
-            cat = st.selectbox("Category", cat_cols) if cat_cols else None
-            topn = st.slider("Top N", 5, 50, 10)
-
-        elif chart_type == "Correlation Heatmap":
-            pass 
-
-        if chart_type == "Line":
-            if not num_cols:
-                st.warning("No numeric columns found.")
-            else:
-                if lib.startswith("Plotly"):
-                    if x_col == idx_opt:
-                        fig = px.line(sample_df.reset_index(), x="index", y=y_col, title=f"Line: {y_col}")
-                    else:
-                        fig = px.line(sample_df, x=x_col if x_col != idx_opt else None, y=y_col, color=None if group == "(none)" else group,
-                                  title=f"Line: {y_col}")
-                        st.plotly_chart(fig, use_container_width=True)
-                else:
-                    fig = plt.figure()
-                    if x_col == idx_opt:
-                        plt.plot(sample_df[y_col])
-                        plt.xlabel("Index")
-                    else:
-                        plt.plot(sample_df[x_col], sample_df[y_col])
-                        plt.xlabel(x_col)
-                        plt.ylabel(y_col)
-                        plt.title(f"Line: {y_col}")
-                        st.pyplot(fig)
-
-        elif chart_type == "Scatter":
-            if len(num_cols) < 2 or x_col is None or y_col is None:
-                st.warning("Need at least two numeric columns for a scatter plot.")
-            else:
-                if lib.startswith("Plotly"):
-                    fig = px.scatter(sample_df, x=x_col, y=y_col,
-                                 color=None if group == "(none)" else group,
-                                 opacity=0.8, title=f"Scatter: {x_col} vs {y_col}")
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    fig = plt.figure()
-                    plt.scatter(sample_df[x_col], sample_df[y_col], alpha=0.7)
-                    plt.xlabel(x_col); plt.ylabel(y_col)
-                    plt.title(f"Scatter: {x_col} vs {y_col}")
-                    st.pyplot(fig)
-
-        elif chart_type == "Histogram":
-            if not num_cols:
-                st.warning("No numeric columns found.")
-            else:
-                if lib.startswith("Plotly"):
-                    fig = px.histogram(sample_df, x=h_col, nbins=bins, title=f"Histogram: {h_col}")
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    fig = plt.figure()
-                    plt.hist(sample_df[h_col].dropna(), bins=bins)
-                    plt.xlabel(h_col); plt.ylabel("Count")
-                    plt.title(f"Histogram: {h_col}")
-                    st.pyplot(fig)
-
-        elif chart_type == "Box":
-            if not num_cols:
-                st.warning("No numeric columns found.")
-            elif by is None and lib.startswith("Plotly"):
-            # single series (Plotly)
-                fig = px.box(sample_df, y=val, points="all" if show_points else False, title=f"Box: {val}")
-                st.plotly_chart(fig, use_container_width=True)
-            elif by is None:
-            # single series (Matplotlib)
-                fig = plt.figure()
-                plt.boxplot(sample_df[val].dropna())
-                plt.ylabel(val); plt.title(f"Box: {val}")
-                st.pyplot(fig)
-            else:
-                if lib.startswith("Plotly"):
-                    fig = px.box(sample_df, x=by, y=val, points="all" if show_points else False,
-                             title=f"Box: {val} by {by}")
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                # Grouped box via pandas helper to preserve simple Matplotlib usage
-                    fig = plt.figure()
-                    sample_df[[by, val]].dropna().boxplot(by=by, grid=False, rot=45)
-                    plt.suptitle("")  
-                    plt.title(f"Box: {val} by {by}")
-                    plt.xlabel(by); plt.ylabel(val)
-                    st.pyplot(fig)
-
-        elif chart_type == "Bar (category counts)":
-            if not cat_cols or cat is None:
-                st.warning("No categorical columns found.")
-            else:
-                counts = sample_df[cat].astype("string").value_counts(dropna=False).head(topn).reset_index()
-                counts.columns = [cat, "count"]
-            if lib.startswith("Plotly"):
-                fig = px.bar(counts, x=cat, y="count", title=f"Top {topn} {cat} counts")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                fig = plt.figure()
-                plt.bar(counts[cat], counts["count"])
-                plt.xticks(rotation=45, ha="right")
-                plt.ylabel("count"); plt.title(f"Top {topn} {cat} counts")
-                st.pyplot(fig)
-
-        elif chart_type == "Correlation Heatmap":
-            if len(num_cols) < 2:
-                st.warning("Need multiple numeric columns for correlation heatmap.")
-            else:
-                corr = sample_df[num_cols].corr(numeric_only=True)
-            if lib.startswith("Plotly"):
-                fig = px.imshow(corr, text_auto=True, aspect="auto", title="Correlation (numeric)")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                fig = plt.figure()
-                plt.imshow(corr, interpolation="nearest")
-                plt.colorbar()
-                plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
-                plt.yticks(range(len(corr.columns)), corr.columns)
-                plt.title("Correlation (numeric)")
-                plt.tight_layout()
-                st.pyplot(fig)
-
+# Main
+if not uploaded:
+    st.info("Upload a dataset (in CSV) to begin exploring your data.")
 else:
-    st.info("Upload a CSV to begin exploring your data.")
+    try:
+        raw = load_csv(uploaded)
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
+        st.stop()
+
+    # Normalize column names (lower-case keys)
+    df = normalize_columns(raw)
+    if not is_kepler_koi(df):
+        st.error("Please upload a **Kepler KOI dataset**. The current tool only supports Kepler datasets.")
+        st.stop()
+
+    # Keep only relevant KOI columns
+    df = subset_relevant_koi(df)
+
+    # Clean: drop NaN in koi_tce_delivname, filter out False Positives
+    df = drop_false_positives_and_nans(df)
+
+    # Report basic shape
+    st.success(f"Prepared KOI dataframe with **{df.shape[0]:,} rows** × **{df.shape[1]} columns**")
+
+    # Make sure types are numeric where appropriate
+    numeric_cols = [
+        c for c in df.columns if c not in {"koi_disposition", "koi_tce_plnt_num", "koi_tce_delivname"}
+    ]
+    #Fill safe non-numeric conversions
+    for c in numeric_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    #Chart picker
+    st.subheader("Choose a visualization for your KOI dataset")
+    st.markdown('<label class="exo-selectbox-label">Visualization type</label>', unsafe_allow_html=True)
+    chart_type = st.selectbox(
+        "Visualization type",
+        [
+            "Period–Radius (scatter, log–log)",
+            "Radius–Insolation (scatter, log X)",
+            "Transit Duration vs Period (scatter)",
+            "SNR vs Kepler Magnitude (scatter)",
+            "Radius vs Equilibrium Temperature (scatter)",
+            "Disposition counts (bar)",
+            "Histogram: Period",
+            "Histogram: Radius",
+            "Histogram: Transit Depth",
+            "Histogram: Transit Duration",
+            "Histogram: SNR",
+            "Histogram: Equilibrium Temperature",
+            "Correlation Heatmap (numeric)"
+        ],
+        index=0,
+        help="Select exactly one chart type. The chart will render below.",
+        label_visibility="collapsed"
+    )
+
+    st.markdown("---")
+
+    # Downsample slider for speed on very large tables
+    row_limit = st.slider(
+        "Choose the number of rows you would like to plot",
+        min_value=1000, max_value=max(1000, len(df)), value=min(50000, len(df)), step=1000
+    )
+    sample = df.head(row_limit)
+
+    # Helpers to guard missing columns
+    def need(*cols):
+        missing = [c for c in cols if c not in sample.columns]
+        if missing:
+            st.warning(f"Missing required columns for this chart: {', '.join(missing)}")
+            return False
+        if sample[list(cols)].dropna().empty:
+            st.warning("Not enough non-NaN data to render this chart.")
+            return False
+        return True
+
+    #Render the chosen chart
+    if chart_type == "Period–Radius (scatter, log–log)":
+        if need("koi_period", "koi_prad"):
+            fig = px.scatter(
+                sample, x="koi_period", y="koi_prad",
+                color=sample["koi_disposition"] if "koi_disposition" in sample.columns else None,
+                hover_data=["koi_model_snr", "koi_kepmag"] if "koi_model_snr" in sample and "koi_kepmag" in sample else None,
+                opacity=0.8, title="Period–Radius Diagram"
+            )
+            fig.update_xaxes(type="log", title="Orbital Period (days)")
+            fig.update_yaxes(type="log", title="Planet Radius (Earth radii)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "Radius–Insolation (scatter, log X)":
+        if need("koi_insol", "koi_prad"):
+            fig = px.scatter(
+                sample, x="koi_insol", y="koi_prad",
+                color=sample["koi_disposition"] if "koi_disposition" in sample.columns else None,
+                opacity=0.8, title="Radius vs Insolation"
+            )
+            fig.update_xaxes(type="log", title="Insolation (S⊕)")
+            fig.update_yaxes(title="Planet Radius (R⊕)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "Transit Duration vs Period (scatter)":
+        if need("koi_period", "koi_duration"):
+            fig = px.scatter(
+                sample, x="koi_period", y="koi_duration",
+                color=sample["koi_disposition"] if "koi_disposition" in sample.columns else None,
+                opacity=0.8, title="Transit Duration vs Period"
+            )
+            fig.update_xaxes(title="Orbital Period (days)")
+            fig.update_yaxes(title="Transit Duration (hours)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "SNR vs Kepler Magnitude (scatter)":
+        if need("koi_model_snr", "koi_kepmag"):
+            fig = px.scatter(
+                sample, x="koi_kepmag", y="koi_model_snr",
+                color=sample["koi_disposition"] if "koi_disposition" in sample.columns else None,
+                opacity=0.8, title="Detection SNR vs Kepler Magnitude"
+            )
+            fig.update_xaxes(title="Kepler Magnitude (Kp)")
+            fig.update_yaxes(title="Model SNR")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "Radius vs Equilibrium Temperature (scatter)":
+        if need("koi_teq", "koi_prad"):
+            fig = px.scatter(
+                sample, x="koi_teq", y="koi_prad",
+                color=sample["koi_disposition"] if "koi_disposition" in sample.columns else None,
+                opacity=0.8, title="Radius vs Equilibrium Temperature"
+            )
+            fig.update_xaxes(title="Equilibrium Temperature (K)")
+            fig.update_yaxes(title="Planet Radius (R⊕)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "Disposition counts (bar)":
+        if need("koi_disposition"):
+            counts = (sample["koi_disposition"]
+                      .astype("string").str.strip()
+                      .value_counts(dropna=False)
+                      .reset_index())
+            counts.columns = ["koi_disposition", "count"]
+            fig = px.bar(counts, x="koi_disposition", y="count", title="KOI Disposition Counts")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type.startswith("Histogram:"):
+        # map choice to column
+        col_map = {
+            "Histogram: Period": "koi_period",
+            "Histogram: Radius": "koi_prad",
+            "Histogram: Transit Depth": "koi_depth",
+            "Histogram: Transit Duration": "koi_duration",
+            "Histogram: SNR": "koi_model_snr",
+            "Histogram: Equilibrium Temperature": "koi_teq",
+        }
+        col = col_map[chart_type]
+        if need(col):
+            bins = st.slider("Bins", 5, 120, 40)
+            fig = px.histogram(sample, x=col, nbins=bins, title=f"Histogram: {col}")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "Correlation Heatmap (numeric)":
+        # Only numeric cols from our keep set
+        num_keep = [c for c in KOI_KEEP_COLS if c in sample.columns and sample[c].dtype != "object"]
+        if len(num_keep) < 2:
+            st.warning("Need at least two numeric KOI columns for a correlation heatmap.")
+        else:
+            corr = sample[num_keep].corr(numeric_only=True)
+            fig = px.imshow(corr, text_auto=True, aspect="auto", title="Correlation (numeric KOI features)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    # Expose the prepared dataframe for plotting (if you need elsewhere)
+    st.markdown("#### Cleaned KOI dataset")
+    st.dataframe(df, use_container_width=True)

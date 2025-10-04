@@ -23,13 +23,17 @@ def mix_rgba(hex_color: str, alpha: float = 0.6, bias: float = 0.0) -> str:
         b = max(0, min(255, int(b * (1 + bias))))
     return f"rgba({r},{g},{b},{alpha})"
 
-def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png", uploader_caption_hex: str = "#111111"):
+def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png", uploader_caption_hex: str = "#111111",accent_hex: str | None = "#0f766e"):
     base_hex = PAGE_COLORS.get(page_key, PAGE_COLORS["forest"])
+    accent_hex = accent_hex or "#0f766e"
 
     # Tuned opacities
     panel_rgba   = mix_rgba(base_hex, alpha=0.55, bias=0.08)
     mist_rgba    = mix_rgba(MIST_HEX,  alpha=0.85, bias=0.00)  
     sidebar_rgba = mix_rgba(base_hex, alpha=0.85, bias=-0.15)
+
+    accent_glow  = mix_rgba(accent_hex, alpha=0.20)
+    accent_faint = mix_rgba(accent_hex, alpha=0.25)
 
     gradient_overlay = (
         "radial-gradient(1200px 600px at 10% 20%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%),"
@@ -44,6 +48,7 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png", uploader_
     <style>
         :root {{
             --exo-uploader-caption: {uploader_caption_hex};
+            --primary-color: {accent_hex};
         }}
 
         /* File uploader: white box + per-page caption color */
@@ -158,6 +163,7 @@ def apply_theme(page_key: str, nebula_path: str = "assets/Nebula.png", uploader_
         background: radial-gradient(circle at 35% 35%, #b9d6ff 0%, #2e7dd6 50%, rgba(0,0,0,0) 65%);
         box-shadow: 0 0 8px rgba(185,214,255,0.6);
       }}
+      
     </style>
     """, unsafe_allow_html=True)
 
