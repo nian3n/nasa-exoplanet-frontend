@@ -114,4 +114,4 @@ for idx, (page, desc) in enumerate(page_descriptions.items()):
             unsafe_allow_html=True,
         )
         # Native Streamlit link (works with multipage routing)
-        st.page_link(target, label=f"Go to {page}", icon="➡️")''''
+        st.page_link(target, label=f"Go to {page}", icon="➡️")'''
